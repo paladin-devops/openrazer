@@ -44,40 +44,50 @@ static void print_erroneous_kraken_request_report(struct razer_kraken_request_re
 }
 */
 
-static int razer_kraken_send_control_msg(struct usb_device *usb_dev,struct razer_kraken_request_report* report, unsigned char skip)
+static int razer_kraken_send_control_msg(struct razer_kraken_device *device, struct razer_kraken_request_report* report, unsigned char skip)
 {
-    uint request = HID_REQ_SET_REPORT; // 0x09
-    uint request_type = USB_TYPE_CLASS | USB_RECIP_INTERFACE | USB_DIR_OUT; // 0x21
-    uint value = 0x0204;
-    uint index = 0x0003;
-    uint size = 37;
-    char *buf;
-    int len;
+    int ret;
+    struct usb_dev *usb_device;
+    usb_dev = device->usb_dev;
 
-    buf = kmemdup(report, size, GFP_KERNEL);
-    if (buf == NULL)
-        return -ENOMEM;
+    if (device->use_bulk) {
+        int transferred;
+        char *buf = kmemdup(report, sizeof(struct razer_kraken_request_report), GFP_KERNEL);
+        if (!buf)
+            return -ENOMEM;
+        ret = razer_kraken_send_bulk_msg(usb_dev, buf, sizeof(struct razer_kraken_request_report), &transferred);
+        if (ret == 0 && transferred != sizeof(struct razer_kraken_request_report)) {
+            printk(KERN_WARNING "razerkraken: Bulk transfer incomplete: %d bytes sent\n", transferred);
+            ret = -EIO;
+        }
+        kfree(buf);
+        if (skip != 1) {
+            msleep(report->length * 15); 
+        }
+    } else {
+        uint request = HID_REQ_SET_REPORT; // 0x09
+        uint request_type = USB_TYPE_CLASS | USB_RECIP_INTERFACE | USB_DIR_OUT; // 0x21
+        uint value = 0x0204;
+        uint index = 0x0003;
+        uint size = 37;
+        char *buf = kmemdup(report, size, GFP_KERNEL);
+        if (!buf)
+            return -ENOMEM;
 
-    // Send usb control message
-    len = usb_control_msg(usb_dev, usb_sndctrlpipe(usb_dev, 0),
-                          request,      // Request      U8
-                          request_type, // RequestType  U8
-                          value,        // Value        U16
-                          index,        // Index        U16
-                          buf,          // Data         void* data
-                          size,         // Length       U16
-                          USB_CTRL_SET_TIMEOUT); //     Int
-
-    // Wait
-    if(skip != 1) {
-        msleep(report->length * 15);
+        ret = usb_control_msg(usb_dev, usb_sndctrlpipe(usb_dev, 0),
+                              request, request_type, value, index, buf, size, USB_CTRL_SET_TIMEOUT);
+        if (skip != 1) {
+            msleep(report->length * 15);
+        }
+        kfree(buf);
+        if (ret != size) {
+            printk(KERN_WARNING "razerkraken: Device data transfer failed.\n");
+            ret = (ret < 0) ? ret : -EIO;
+        } else {
+            ret = 0;
+        }
     }
-
-    kfree(buf);
-    if(len!=size)
-        printk(KERN_WARNING "razer driver: Device data transfer failed.\n");
-
-    return ((len < 0) ? len : ((len != size) ? -EIO : 0));
+    return ret;
 }
 
 /**
@@ -129,7 +139,7 @@ static unsigned char get_current_effect(struct device *dev)
     }
 
     device->data[0] = 0x00;
-    razer_kraken_send_control_msg(device->usb_dev, &report, 1);
+    razer_kraken_send_control_msg(device, &report, 1);
     msleep(25); // Sleep 20ms
 
     // Check for actual data
@@ -160,7 +170,7 @@ static unsigned int get_rgb_from_addr(struct device *dev, unsigned short address
     }
 
     device->data[0] = 0x00;
-    razer_kraken_send_control_msg(device->usb_dev, &report, 1);
+    razer_kraken_send_control_msg(device, &report, 1);
     msleep(25); // Sleep 20ms
 
     // Check for actual data
@@ -265,7 +275,7 @@ static ssize_t razer_attr_write_matrix_effect_spectrum(struct device *dev, struc
 
     // Lock access to sending USB as adhering to the razer len*15ms delay
     mutex_lock(&device->lock);
-    razer_kraken_send_control_msg(device->usb_dev, &report, 0);
+    razer_kraken_send_control_msg(device, &report, 0);
     mutex_unlock(&device->lock);
 
     return count;
@@ -290,7 +300,7 @@ static ssize_t razer_attr_write_matrix_effect_none(struct device *dev, struct de
 
     // Lock access to sending USB as adhering to the razer len*15ms delay
     mutex_lock(&device->lock);
-    razer_kraken_send_control_msg(device->usb_dev, &report, 0);
+    razer_kraken_send_control_msg(device, &report, 0);
     mutex_unlock(&device->lock);
 
     return count;
@@ -333,12 +343,12 @@ static ssize_t razer_attr_write_matrix_effect_static(struct device *dev, struct 
     case USB_DEVICE_ID_RAZER_KRAKEN:
     case USB_DEVICE_ID_RAZER_KRAKEN_V2:
     case USB_DEVICE_ID_RAZER_KRAKEN_ULTIMATE:
-        razer_kraken_send_control_msg(device->usb_dev, &rgb_report, 0);
+        razer_kraken_send_control_msg(device, &rgb_report, 0);
         break;
     }
 
     // Send Set static command
-    razer_kraken_send_control_msg(device->usb_dev, &effect_report, 0);
+    razer_kraken_send_control_msg(device, &effect_report, 0);
     mutex_unlock(&device->lock);
 
     return count;
@@ -375,9 +385,9 @@ static ssize_t razer_attr_write_matrix_effect_custom(struct device *dev, struct 
 
     // Lock sending of the 2 commands
     mutex_lock(&device->lock);
-    razer_kraken_send_control_msg(device->usb_dev, &rgb_report, 1);
+    razer_kraken_send_control_msg(device, &rgb_report, 1);
 
-    razer_kraken_send_control_msg(device->usb_dev, &effect_report, 1);
+    razer_kraken_send_control_msg(device, &effect_report, 1);
     mutex_unlock(&device->lock);
 
     return count;
@@ -437,9 +447,9 @@ static ssize_t razer_attr_write_matrix_effect_breath(struct device *dev, struct 
 
         // Lock sending of the 2 commands
         mutex_lock(&device->lock);
-        razer_kraken_send_control_msg(device->usb_dev, &rgb_report, 0);
+        razer_kraken_send_control_msg(device, &rgb_report, 0);
 
-        razer_kraken_send_control_msg(device->usb_dev, &effect_report, 0);
+        razer_kraken_send_control_msg(device, &effect_report, 0);
         mutex_unlock(&device->lock);
     } else if(count == 6) {
         struct razer_kraken_request_report rgb_report  = get_kraken_request_report(0x04, 0x40, 0x03, device->breathing_address[1]);
@@ -460,11 +470,11 @@ static ssize_t razer_attr_write_matrix_effect_breath(struct device *dev, struct 
 
         // Lock sending of the 2 commands
         mutex_lock(&device->lock);
-        razer_kraken_send_control_msg(device->usb_dev, &rgb_report, 0);
+        razer_kraken_send_control_msg(device, &rgb_report, 0);
 
-        razer_kraken_send_control_msg(device->usb_dev, &rgb_report2, 0);
+        razer_kraken_send_control_msg(device, &rgb_report2, 0);
 
-        razer_kraken_send_control_msg(device->usb_dev, &effect_report, 0);
+        razer_kraken_send_control_msg(device, &effect_report, 0);
         mutex_unlock(&device->lock);
 
     } else if(count == 9) {
@@ -490,13 +500,13 @@ static ssize_t razer_attr_write_matrix_effect_breath(struct device *dev, struct 
 
         // Lock sending of the 2 commands
         mutex_lock(&device->lock);
-        razer_kraken_send_control_msg(device->usb_dev, &rgb_report, 0);
+        razer_kraken_send_control_msg(device, &rgb_report, 0);
 
-        razer_kraken_send_control_msg(device->usb_dev, &rgb_report2, 0);
+        razer_kraken_send_control_msg(device, &rgb_report2, 0);
 
-        razer_kraken_send_control_msg(device->usb_dev, &rgb_report3, 0);
+        razer_kraken_send_control_msg(device, &rgb_report3, 0);
 
-        razer_kraken_send_control_msg(device->usb_dev, &effect_report, 0);
+        razer_kraken_send_control_msg(device, &effect_report, 0);
         mutex_unlock(&device->lock);
 
     } else {
@@ -565,7 +575,7 @@ static ssize_t razer_attr_read_device_serial(struct device *dev, struct device_a
 
         mutex_lock(&device->lock);
         device->data[0] = 0x00;
-        razer_kraken_send_control_msg(device->usb_dev, &report, 1);
+        razer_kraken_send_control_msg(device, &report, 1);
         msleep(25); // Sleep 20ms
 
         // Check for actual data
@@ -603,7 +613,7 @@ static ssize_t razer_attr_read_firmware_version(struct device *dev, struct devic
 
         mutex_lock(&device->lock);
         device->data[0] = 0x00;
-        razer_kraken_send_control_msg(device->usb_dev, &report, 1);
+        razer_kraken_send_control_msg(device, &report, 1);
         msleep(25); // Sleep 20ms
 
         // Check for actual data
@@ -692,6 +702,7 @@ static void razer_kraken_init(struct razer_kraken_device *dev, struct usb_interf
     dev->usb_interface_protocol = intf->cur_altsetting->desc.bInterfaceProtocol;
     dev->usb_vid = usb_dev->descriptor.idVendor;
     dev->usb_pid = usb_dev->descriptor.idProduct;
+    dev->use_bulk = 0;
 
     switch(dev->usb_pid) {
     case USB_DEVICE_ID_RAZER_KRAKEN_V2:
@@ -712,6 +723,9 @@ static void razer_kraken_init(struct razer_kraken_device *dev, struct usb_interf
         // Get a "random" integer
         get_random_bytes(&rand_serial, sizeof(unsigned int));
         sprintf(&dev->serial[0], "HN%015u", rand_serial);
+        break;
+    case USB_DEVICE_ID_RAZER_KRAKEN_V3_PRO:
+        dev->use_bulk = 1;
         break;
     }
 }
@@ -853,6 +867,7 @@ static const struct hid_device_id razer_devices[] = {
     { HID_USB_DEVICE(USB_VENDOR_ID_RAZER,USB_DEVICE_ID_RAZER_KRAKEN) },
     { HID_USB_DEVICE(USB_VENDOR_ID_RAZER,USB_DEVICE_ID_RAZER_KRAKEN_V2) },
     { HID_USB_DEVICE(USB_VENDOR_ID_RAZER,USB_DEVICE_ID_RAZER_KRAKEN_ULTIMATE) },
+    { HID_USB_DEVICE(USB_VENDOR_ID_RAZER, USB_DEVICE_ID_RAZER_KRAKEN_V3_PRO) },
     { 0 }
 };
 

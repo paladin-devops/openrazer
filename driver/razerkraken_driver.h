@@ -16,6 +16,8 @@
 #define USB_DEVICE_ID_RAZER_KRAKEN_V2 0x0510
 // Codename Unknown
 #define USB_DEVICE_ID_RAZER_KRAKEN_ULTIMATE 0x0527
+// Codename Unknown
+#define USB_DEVICE_ID_RAZER_KRAKEN_V3_PRO 0x052c
 
 #define USB_INTERFACE_PROTOCOL_NONE 0
 
@@ -38,6 +40,10 @@ struct razer_kraken_device {
     unsigned char firmware_version[3];
 
     u8 data[33];
+
+    int use_bulk;          // 1 for bulk transfers, 0 for HID
+    unsigned char bulk_out_ep; // Bulk OUT endpoint address
+    unsigned char bulk_in_ep;  // Bulk IN endpoint address
 
 };
 
