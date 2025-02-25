@@ -229,6 +229,10 @@ static ssize_t razer_attr_read_device_type(struct device *dev, struct device_att
         device_type = "Razer Kraken Ultimate\n";
         break;
 
+    case USB_DEVICE_ID_RAZER_KRAKEN_V3_PRO:
+        device_type = "Razer Kraken V3 Pro\n";
+        break;
+
     default:
         device_type = "Unknown Device\n";
     }
@@ -767,6 +771,7 @@ static int razer_kraken_probe(struct hid_device *hdev, const struct hid_device_i
         case USB_DEVICE_ID_RAZER_KRAKEN:
         case USB_DEVICE_ID_RAZER_KRAKEN_V2:
         case USB_DEVICE_ID_RAZER_KRAKEN_ULTIMATE:
+        case USB_DEVICE_ID_RAZER_KRAKEN_V3_PRO:
             CREATE_DEVICE_FILE(&hdev->dev, &dev_attr_matrix_effect_none);            // No effect
             CREATE_DEVICE_FILE(&hdev->dev, &dev_attr_matrix_effect_spectrum);        // Spectrum effect
             CREATE_DEVICE_FILE(&hdev->dev, &dev_attr_matrix_effect_static);          // Static effect
