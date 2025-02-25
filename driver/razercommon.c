@@ -124,7 +124,7 @@ int razer_get_usb_response(struct usb_device *usb_dev, uint report_index, struct
 /*
     Send a URB_BULK request to the razer device
 */
-static int razer_kraken_send_bulk_msg(struct usb_device *usb_dev, void *data, int length, int *transferred)
+int razer_kraken_send_bulk_msg(struct usb_device *usb_dev, void *data, int length, int *transferred)
 {
     int ret;
     ret = usb_bulk_msg(usb_dev, usb_sndbulkpipe(usb_dev, 0x06), data, length, transferred, 1000);
@@ -137,7 +137,7 @@ static int razer_kraken_send_bulk_msg(struct usb_device *usb_dev, void *data, in
 /*
     Get a URB_BULK response from the razer device
 */
-static int razer_kraken_receive_bulk_msg(struct usb_device *usb_dev, void *data, int length, int *transferred)
+int razer_kraken_receive_bulk_msg(struct usb_device *usb_dev, void *data, int length, int *transferred)
 {
     int ret;
     ret = usb_bulk_msg(usb_dev, usb_rcvbulkpipe(usb_dev, 0x86), data, length, transferred, 1000);
