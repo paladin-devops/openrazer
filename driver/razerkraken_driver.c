@@ -47,7 +47,7 @@ static void print_erroneous_kraken_request_report(struct razer_kraken_request_re
 static int razer_kraken_send_control_msg(struct razer_kraken_device *device, struct razer_kraken_request_report* report, unsigned char skip)
 {
     int ret;
-    struct usb_dev *usb_device;
+    struct usb_device *usb_dev;
     usb_dev = device->usb_dev;
 
     if (device->use_bulk) {
